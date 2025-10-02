@@ -11,11 +11,13 @@ __email__ = "your-email@example.com"
 
 from .scraper import RenfeScraper
 from .optimizer import PriceOptimizer
+from .database import PriceDatabase
 from .models import TrainRoute, PriceData, OptimizationResult
 
 __all__ = [
     "RenfeScraper",
     "PriceOptimizer",
+    "PriceDatabase",
     "TrainRoute",
     "PriceData",
     "OptimizationResult",

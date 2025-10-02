@@ -22,7 +22,7 @@ class RenfeScraper:
     """Web scraper for Renfe train tickets."""
 
     BASE_URL = "https://www.renfe.com"
-    SEARCH_URL = "https://www.renfe.com/es/en"
+    SEARCH_URL = "https://www.renfe.com/es/"
 
     def __init__(self, headless: bool = True, timeout: int = 30000):
         """
@@ -152,31 +152,141 @@ class RenfeScraper:
         return_date: Optional[date] = None
     ) -> None:
         """Fill the search form with travel details."""
-        # Origin station
-        await self.page.fill("[data-testid='origin-input']", origin)
-        await self.page.wait_for_timeout(1000)  # Wait for autocomplete
-        await self.page.press("[data-testid='origin-input']", "ArrowDown")
-        await self.page.press("[data-testid='origin-input']", "Enter")
+        try:
+            # Wait for the page to load completely
+            await self.page.wait_for_load_state("networkidle")
 
-        # Destination station
-        await self.page.fill("[data-testid='destination-input']", destination)
-        await self.page.wait_for_timeout(1000)
-        await self.page.press("[data-testid='destination-input']", "ArrowDown")
-        await self.page.press("[data-testid='destination-input']", "Enter")
+            # Try multiple common selector patterns for train booking sites
+            origin_selectors = [
+                "#origen",
+                "#origin",
+                "input[name='origen']",
+                "input[name='origin']",
+                "[placeholder*='Origen']",
+                "[placeholder*='Origin']",
+                "input[type='text']:first-child"
+            ]
 
-        # Departure date
-        date_str = departure_date.strftime("%d/%m/%Y")
-        await self.page.fill("[data-testid='departure-date']", date_str)
+            # Fill origin
+            origin_filled = False
+            for selector in origin_selectors:
+                try:
+                    await self.page.wait_for_selector(selector, timeout=2000)
+                    await self.page.fill(selector, origin)
+                    await self.page.wait_for_timeout(1000)
+                    origin_filled = True
+                    logger.info(f"Origin filled using selector: {selector}")
+                    break
+                except:
+                    continue
 
-        # Return date if provided
-        if return_date:
-            return_date_str = return_date.strftime("%d/%m/%Y")
-            await self.page.fill("[data-testid='return-date']", return_date_str)
+            if not origin_filled:
+                logger.warning("Could not find origin input field")
+
+            # Fill destination
+            destination_selectors = [
+                "#destino",
+                "#destination",
+                "input[name='destino']",
+                "input[name='destination']",
+                "[placeholder*='Destino']",
+                "[placeholder*='Destination']",
+                "input[type='text']:nth-child(2)"
+            ]
+
+            destination_filled = False
+            for selector in destination_selectors:
+                try:
+                    await self.page.wait_for_selector(selector, timeout=2000)
+                    await self.page.fill(selector, destination)
+                    await self.page.wait_for_timeout(1000)
+                    destination_filled = True
+                    logger.info(f"Destination filled using selector: {selector}")
+                    break
+                except:
+                    continue
+
+            if not destination_filled:
+                logger.warning("Could not find destination input field")
+
+            # Fill departure date
+            date_selectors = [
+                "#fecha_ida",
+                "#departure_date",
+                "input[name='fecha_ida']",
+                "input[name='departure']",
+                "input[type='date']",
+                "[placeholder*='fecha']",
+                "[placeholder*='date']"
+            ]
+
+            date_str = departure_date.strftime("%d/%m/%Y")
+            date_filled = False
+
+            for selector in date_selectors:
+                try:
+                    await self.page.wait_for_selector(selector, timeout=2000)
+
+                    # Try different date formats
+                    date_formats = [
+                        departure_date.strftime("%d/%m/%Y"),
+                        departure_date.strftime("%Y-%m-%d"),
+                        departure_date.strftime("%m/%d/%Y")
+                    ]
+
+                    for date_format in date_formats:
+                        try:
+                            await self.page.fill(selector, date_format)
+                            date_filled = True
+                            logger.info(f"Date filled using selector: {selector} with format: {date_format}")
+                            break
+                        except:
+                            continue
+
+                    if date_filled:
+                        break
+
+                except:
+                    continue
+
+            if not date_filled:
+                logger.warning("Could not find date input field")
+
+        except Exception as e:
+            logger.error(f"Error filling search form: {e}")
+            raise
 
     async def _submit_search(self) -> None:
         """Submit the search form."""
-        search_button = "[data-testid='search-button']"
-        await self.page.click(search_button)
+        # Try multiple common search button selectors
+        search_selectors = [
+            "button[type='submit']",
+            "input[type='submit']",
+            "#buscar",
+            "#search",
+            ".btn-search",
+            ".search-btn",
+            "[data-testid='search-button']",
+            "button:has-text('Buscar')",
+            "button:has-text('Search')",
+            "button:has-text('Consultar')"
+        ]
+
+        search_clicked = False
+        for selector in search_selectors:
+            try:
+                await self.page.wait_for_selector(selector, timeout=2000)
+                await self.page.click(selector)
+                search_clicked = True
+                logger.info(f"Search submitted using selector: {selector}")
+                break
+            except:
+                continue
+
+        if not search_clicked:
+            logger.warning("Could not find search button")
+            # Try pressing Enter on the last filled field as fallback
+            await self.page.keyboard.press("Enter")
 
     async def _parse_search_results(self) -> List[TrainRoute]:
         """Parse search results from the page."""
